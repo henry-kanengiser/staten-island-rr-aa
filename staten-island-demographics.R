@@ -17,13 +17,12 @@ library(janitor)
 ct <- st_read("nyct2020_24a/nyct2020.shp") %>%
   clean_names() %>%
   filter(boro_code == 5) %>%
-  select(geoid, nta_name, cdtaname, shape_area, geometry) %>%
+  select(geoid, nta_name, cdtaname, geometry) %>%
   mutate(area_sqmi = st_area(.) / 2.788e+7) #units are feet so needs to be adjusted
 
 # 2. Get Census Data ----------------------------------------------------------
 
-acsvar <- load_variables(2022, "acs5")
-# acsvar_se <- load_variables(2022, "acs5/subject")
+# acsvar <- load_variables(2022, "acs5")
 
 # Population
 totpopvar <- c(totpop = "B01001_001")
@@ -45,13 +44,13 @@ empvars <- c(labforce   = "B23025_003",
              employed   = "B23025_004")
 
 # English Language Proficiency
-engvars <- c(hhpop      = "S1602_C01_001",
-             limeng     = "S1602_C03_001",
-             limeng_sp  = "S1602_C03_002",
-             limeng_ie  = "S1602_C03_003",
-             limeng_as  = "S1602_C03_004",
-             limeng_ot  = "S1602_C03_005",
-             limeng_pct = "S1602_C04_001")
+engvars <- c(hhpop     = "S1602_C01_001",
+             limeng    = "S1602_C03_001",
+             limengsp  = "S1602_C03_002",
+             limengie  = "S1602_C03_003",
+             limengas  = "S1602_C03_004",
+             limengot  = "S1602_C03_005",
+             limengpct = "S1602_C04_001")
 
 # Vehicles Available
 vehvars <- c(vehtot = "B08141_001",
@@ -61,14 +60,15 @@ vehvars <- c(vehtot = "B08141_001",
              veh3m  = "B08141_005")
 
 # Transport to Work
-tranvars <- c(commute_tot = "B08006_001",
-              commute_dri = "B08006_003",
-              commute_bus = "B08006_009",
-              commute_trn = "B08006_010",
-              commute_com = "B08006_011",
-              commute_fer = "B08006_013",
-              commute_wlk = "B08006_015",
-              commute_bik = "B08006_014")
+tranvars <- c(comtot = "B08006_001",
+              comdri = "B08006_003",
+              combus = "B08006_009",
+              comtrn = "B08006_010",
+              comcom = "B08006_011",
+              comfer = "B08006_013",
+              comwlk = "B08006_015",
+              combik = "B08006_014",
+              comwfh = "B08006_017")
 
 acsvars <- c(totpopvar, racevars, incvars, empvars, engvars, vehvars, tranvars)
 
@@ -98,7 +98,15 @@ acs_wide <- acs %>%
               names_from = variable,
               values_from = estimate) %>%
   # create Other race category based on existing categories
-  mutate(re_other = nhisp - (asian + black + white))
+  mutate(re_other = nhisp - (asian + black + white),
+         pwhite = white/totpop,
+         pbipoc = 1 - pwhite,
+         pveh0 = veh0/vehtot,
+         pdri = comdri/comtot,
+         ptrn = comtrn/comtot,
+         pbus = combus/comtot,
+         pfer = comfer/comtot,
+         pwfh = comwfh/comtot)
 
 acs_county_wide <- acs_county %>%
   clean_names() %>%
@@ -107,16 +115,30 @@ acs_county_wide <- acs_county %>%
               names_from = variable,
               values_from = estimate) %>%
   # create Other race category based on existing categories
-  mutate(re_other = nhisp - (asian + black + white))
+  mutate(re_other = nhisp - (asian + black + white),
+         pwhite = white/totpop,
+         pbipoc = 1 - pwhite,
+         pveh0 = veh0/vehtot,
+         pdri = comdri/comtot,
+         ptrn = comtrn/comtot,
+         pbus = combus/comtot,
+         pfer = comfer/comtot,
+         pwfh = comwfh/comtot)
 
 
 ## Join to census tract to calculate the population density ----
 acs_wide2 <- acs_wide %>%
   full_join(ct, by = "geoid") %>%
-  mutate(popdens_sqmi = totpop/area_sqmi)
+  mutate(dens_sqmi = totpop/area_sqmi)
 
 
 # 3. Save permanent datasets --------------------------------------------------
+
+# check that var names aren't too long for the shapefile
+names(acs_wide2) %>%
+  as.data.frame() %>%
+  mutate(nchar = nchar(.)) %>%
+  arrange(desc(nchar))
 
 acs_wide2 %>%
   st_drop_geometry() %>%
